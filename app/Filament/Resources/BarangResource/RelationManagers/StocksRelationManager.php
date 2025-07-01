@@ -2,14 +2,19 @@
 
 namespace App\Filament\Resources\BarangResource\RelationManagers;
 
+use App\JenisTransaksi;
 use Filament\Forms;
+use Filament\Forms\Components\TextInput;
 use Filament\Forms\Form;
 use Filament\Resources\RelationManagers\RelationManager;
 use Filament\Tables;
 use Filament\Tables\Filters\TernaryFilter;
 use Filament\Tables\Table;
 use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\SoftDeletingScope;
+use Illuminate\Support\Carbon;
+use Illuminate\Support\Facades\DB;
 
 class StocksRelationManager extends RelationManager
 {
@@ -39,7 +44,7 @@ class StocksRelationManager extends RelationManager
                     ->numeric(locale: 'id')
                     ->sortable(),
                 Tables\Columns\TextColumn::make('barang.satuan')
-                    ->label('Satuan')
+                    ->label('Satuan'),
             ])
             ->filters([
                 TernaryFilter::make('stock_balance')
@@ -50,19 +55,38 @@ class StocksRelationManager extends RelationManager
                         blank: fn (Builder $query) => $query,
                         true: fn (Builder $query) => $query->hasBalance(),
                         false: fn (Builder $query) => $query->noBalance(),
-                    )
-            ])
-            ->headerActions([
-                Tables\Actions\CreateAction::make(),
+                    ),
             ])
             ->actions([
-                Tables\Actions\EditAction::make(),
-                Tables\Actions\DeleteAction::make(),
-            ])
-            ->bulkActions([
-                Tables\Actions\BulkActionGroup::make([
-                    Tables\Actions\DeleteBulkAction::make(),
-                ]),
+                Tables\Actions\Action::make('masuk_stock')
+                    ->label('+ Stock')
+                    ->form([
+                        TextInput::make('keterangan')
+                            ->required(),
+                        TextInput::make('jumlah')
+                            ->label('Jumlah stock')
+                            ->required()
+                            ->minValue(1)
+                            ->numeric(),
+                    ])
+                    ->action(
+                        function (Model $record, array $data) {
+                            DB::transaction(
+                                function () use($record, $data) {
+                                    $record->update([
+                                        'balance' => $record->balance + $data['jumlah'],
+                                    ]);
+                                    $record->transaksi()->create([
+                                        'tanggal' => Carbon::today(),
+                                        'keterangan' => $data['keterangan'],
+                                        'jenis_transaksi' => JenisTransaksi::Debit,
+                                        'jumlah' => $data['jumlah'],
+                                    ]);
+                                }
+                            );
+                            
+                        }
+                    ),
             ]);
     }
 }
